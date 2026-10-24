@@ -143,8 +143,8 @@ router.post('/register', async (req: AuthenticatedRequest, res: Response) => {
 // ----------------------------------------------------------------------------
 router.post('/login', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { email, username, email_or_username, password } = req.body || {};
-    const identifier = (email_or_username || email || username || '').trim().toLowerCase();
+    const { email, username, email_or_username, identifier: rawIdentifier, password } = req.body || {};
+    const identifier = (rawIdentifier || email_or_username || email || username || '').trim().toLowerCase();
 
     if (!identifier || !password) {
       return res.status(400).json({ detail: 'Email/Username and password are required.' });
@@ -304,12 +304,16 @@ router.post('/change-password', requireAuth, async (req: AuthenticatedRequest, r
 // ----------------------------------------------------------------------------
 router.post('/forgot-password', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { email } = req.body || {};
-    if (!email) {
-      return res.status(400).json({ detail: 'Email is required.' });
+    const { email, identifier: rawId } = req.body || {};
+    const target = (email || rawId || '').trim().toLowerCase();
+    if (!target) {
+      return res.status(400).json({ detail: 'Email or username is required.' });
     }
 
-    const userRes = await query('SELECT id FROM users WHERE LOWER(email) = $1', [email.trim().toLowerCase()]);
+    const userRes = await query(
+      'SELECT id FROM users WHERE LOWER(email) = $1 OR LOWER(username) = $1',
+      [target]
+    );
     if (userRes.rows.length > 0) {
       const token = generateTokenHash();
       const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour

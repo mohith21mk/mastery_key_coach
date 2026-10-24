@@ -389,12 +389,26 @@ async function runTests() {
   });
   assert(rBadLogin.status === 401, 'POST /api/auth/login rejects incorrect password with 401');
 
-  // Login demo user
+  // Login demo user via email
   const rLogin = await request('/api/auth/login', {
     method: 'POST',
     body: { email: 'demo@masterykeycoach.com', password: 'Password123!' }
   });
-  assert(rLogin.status === 200 && rLogin.data.user.email === 'demo@masterykeycoach.com', 'POST /api/auth/login logs in demo user');
+  assert(rLogin.status === 200 && rLogin.data.user.email === 'demo@masterykeycoach.com', 'POST /api/auth/login logs in demo user via email');
+
+  // Login demo user via identifier (email) - verifies frontend React contract
+  const rLoginId = await request('/api/auth/login', {
+    method: 'POST',
+    body: { identifier: 'demo@masterykeycoach.com', password: 'Password123!' }
+  });
+  assert(rLoginId.status === 200 && rLoginId.data.user.email === 'demo@masterykeycoach.com', 'POST /api/auth/login logs in demo user via identifier (email)');
+
+  // Login demo user via identifier (username) - verifies frontend React contract with username
+  const rLoginUsername = await request('/api/auth/login', {
+    method: 'POST',
+    body: { identifier: 'mohith_ai', password: 'Password123!' }
+  });
+  assert(rLoginUsername.status === 200 && rLoginUsername.data.user.username === 'mohith_ai', 'POST /api/auth/login logs in demo user via identifier (username)');
 
   const setCookie = rLogin.headers['set-cookie'];
   assert(setCookie && setCookie[0].includes('mkc_session='), 'POST /api/auth/login returns HttpOnly mkc_session cookie');

@@ -276,9 +276,17 @@ export async function registerUser(data) {
 }
 
 export async function loginUser(data) {
+  const id = data?.identifier || data?.email || data?.username || '';
+  const payload = {
+    ...data,
+    identifier: id,
+    email: data?.email || id,
+    username: data?.username || id,
+    email_or_username: id,
+  };
   const response = await apiFetch('/api/auth/login', {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify(payload),
   });
   if (!response.ok) {
     const errBody = await response.json().catch(() => ({}));
