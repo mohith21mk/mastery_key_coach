@@ -12,10 +12,19 @@ export function setMockQueryHandler(handler: ((text: string, params?: any[]) => 
   mockQueryHandler = handler;
 }
 
+function getCleanConnectionString(): string {
+  const rawUrl = process.env.DATABASE_URL || '';
+  let clean = rawUrl.trim();
+  if ((clean.startsWith('"') && clean.endsWith('"')) || (clean.startsWith("'") && clean.endsWith("'"))) {
+    clean = clean.slice(1, -1).trim();
+  }
+  return clean;
+}
+
 export function getPool(): Pool {
   if (pool) return pool;
 
-  const connectionString = process.env.DATABASE_URL || '';
+  const connectionString = getCleanConnectionString();
   const isPostgres = connectionString.startsWith('postgres://') || connectionString.startsWith('postgresql://');
 
   if (!isPostgres) {
@@ -66,7 +75,7 @@ export async function query<T = any>(text: string, params?: any[]): Promise<Quer
     return mockQueryHandler(text, params);
   }
 
-  const connectionString = process.env.DATABASE_URL || '';
+  const connectionString = getCleanConnectionString();
   const isPostgres = connectionString.startsWith('postgres://') || connectionString.startsWith('postgresql://');
 
   if (!isPostgres) {
