@@ -72,7 +72,8 @@ const dbStore = {
   user_follows: [],
   messages: [],
   notifications: [],
-  feedback: []
+  feedback: [],
+  password_resets: []
 };
 
 // Setup Mock Query Engine
@@ -153,9 +154,42 @@ setMockQueryHandler(async (sql, params = []) => {
   }
 
   if (upper.includes('UPDATE APP_SESSIONS SET REVOKED_AT')) {
+    if (upper.includes('WHERE USER_ID = $1')) {
+      const uid = params[0];
+      dbStore.app_sessions.filter(x => x.user_id === uid).forEach(s => s.revoked_at = new Date().toISOString());
+      return { rows: [], rowCount: 1 };
+    }
     const token = params[0];
     const s = dbStore.app_sessions.find(x => x.token === token);
     if (s) s.revoked_at = new Date().toISOString();
+    return { rows: [], rowCount: 1 };
+  }
+
+  // Password resets
+  if (upper.includes('UPDATE PASSWORD_RESETS SET USED_AT = CURRENT_TIMESTAMP WHERE USER_ID = $1')) {
+    const uid = params[0];
+    dbStore.password_resets.filter(x => x.user_id === uid && !x.used_at).forEach(r => r.used_at = new Date().toISOString());
+    return { rows: [], rowCount: 1 };
+  }
+  if (upper.includes('INSERT INTO PASSWORD_RESETS')) {
+    const newId = dbStore.password_resets.length + 1;
+    const rec = { id: newId, user_id: params[0], token_hash: params[1], expires_at: params[2], used_at: null };
+    dbStore.password_resets.push(rec);
+    return { rows: [rec], rowCount: 1 };
+  }
+  if (upper.includes('FROM PASSWORD_RESETS WHERE TOKEN_HASH = $1')) {
+    const th = params[0];
+    const rows = dbStore.password_resets.filter(r => r.token_hash === th && !r.used_at && new Date(r.expires_at) > new Date());
+    return { rows, rowCount: rows.length };
+  }
+  if (upper.includes('UPDATE PASSWORD_RESETS SET USED_AT = CURRENT_TIMESTAMP WHERE ID = $1')) {
+    const r = dbStore.password_resets.find(x => x.id === params[0]);
+    if (r) r.used_at = new Date().toISOString();
+    return { rows: [], rowCount: 1 };
+  }
+  if (upper.includes('UPDATE USERS SET PASSWORD_HASH = $1 WHERE ID = $2')) {
+    const u = dbStore.users.find(x => x.id === params[1]);
+    if (u) u.password_hash = params[0];
     return { rows: [], rowCount: 1 };
   }
 
@@ -531,6 +565,71 @@ async function runTests() {
     headers: { 'Cookie': cookieHeader }
   });
   assert(rMeAfterLogout.status === 401, 'Revoked session cookie returns 401 on subsequent requests');
+
+  // 11. Secure Password Recovery & Session Revocation
+  console.log('\n[11] Secure Password Recovery & Session Revocation:');
+
+  // Login fresh session
+  const rLogin2 = await request('/api/auth/login', {
+    method: 'POST',
+    body: { identifier: 'demo@masterykeycoach.com', password: 'Password123!' }
+  });
+  assert(rLogin2.status === 200, 'POST /api/auth/login re-authenticates before password reset');
+  const activeSessionCookie = (rLogin2.headers['set-cookie'] || [])[0].split(';')[0];
+
+  // Request password reset
+  const rForgot = await request('/api/auth/forgot-password', {
+    method: 'POST',
+    body: { identifier: 'demo@masterykeycoach.com' }
+  });
+  assert(rForgot.status === 200, 'POST /api/auth/forgot-password returns 200 generic message');
+  assert(rForgot.data.dev_reset_token, 'POST /api/auth/forgot-password issues raw token in dev/test mode');
+  const resetToken = rForgot.data.dev_reset_token;
+
+  // Invalid token rejected
+  const rResetBad = await request('/api/auth/reset-password', {
+    method: 'POST',
+    body: { token: 'invalid_token_12345', new_password: 'NewStrongPassword123!' }
+  });
+  assert(rResetBad.status === 400, 'POST /api/auth/reset-password rejects invalid/expired token with 400');
+
+  // Valid token reset
+  const rResetGood = await request('/api/auth/reset-password', {
+    method: 'POST',
+    body: { token: resetToken, new_password: 'NewStrongPassword123!' }
+  });
+  assert(rResetGood.status === 200, 'POST /api/auth/reset-password succeeds with 200');
+
+  // Single-use token enforcement: reusing token fails
+  const rResetReuse = await request('/api/auth/reset-password', {
+    method: 'POST',
+    body: { token: resetToken, new_password: 'AnotherPassword123!' }
+  });
+  assert(rResetReuse.status === 400, 'POST /api/auth/reset-password enforces single-use (token cannot be reused)');
+
+  // Verify old active session was revoked on password reset
+  const rMeOldSession = await request('/api/auth/me', {
+    headers: { 'Cookie': activeSessionCookie }
+  });
+  assert(rMeOldSession.status === 401, 'Password reset automatically revokes prior active sessions');
+
+  // Old password rejected
+  const rOldLogin = await request('/api/auth/login', {
+    method: 'POST',
+    body: { identifier: 'demo@masterykeycoach.com', password: 'Password123!' }
+  });
+  assert(rOldLogin.status === 401, 'Old password rejected following password reset');
+
+  // New password accepted
+  const rNewLogin = await request('/api/auth/login', {
+    method: 'POST',
+    body: { identifier: 'demo@masterykeycoach.com', password: 'NewStrongPassword123!' }
+  });
+  assert(rNewLogin.status === 200, 'New password successfully authenticates user');
+
+  // Restore password for demo user in test store
+  const u = dbStore.users.find(x => x.id === 1);
+  if (u) u.password_hash = hashPassword('Password123!');
 
   // Teardown
   server.close();

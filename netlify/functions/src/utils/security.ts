@@ -99,3 +99,17 @@ export function generateSessionToken(): string {
 export function generateTokenHash(): string {
   return crypto.randomBytes(24).toString('hex');
 }
+
+/**
+ * Generates a cryptographically random raw reset token (32 bytes url-safe).
+ */
+export function generateResetToken(): string {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+/**
+ * Computes a SHA-256 hash of a token for secure database storage.
+ */
+export function hashToken(token: string): string {
+  return crypto.createHash('sha256').update(token.trim()).digest('hex');
+}

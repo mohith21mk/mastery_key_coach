@@ -7,8 +7,10 @@ import {
   validateUsername,
   normalizeUsername,
   generateSessionToken,
-  generateTokenHash,
+  generateResetToken,
+  hashToken,
 } from '../utils/security';
+import { sendPasswordResetEmail, isEmailDeliveryConfigured } from '../utils/email';
 import {
   AuthenticatedRequest,
   requireAuth,
@@ -18,6 +20,23 @@ import {
 } from '../middleware/auth';
 
 const router = Router();
+
+// In-memory rate limiting map for password reset requests (max 5 requests per 15 minutes per key)
+const resetRateLimitMap = new Map<string, { count: number; firstRequest: number }>();
+function checkResetRateLimit(key: string): boolean {
+  const now = Date.now();
+  const windowMs = 15 * 60 * 1000;
+  const entry = resetRateLimitMap.get(key);
+  if (!entry || now - entry.firstRequest > windowMs) {
+    resetRateLimitMap.set(key, { count: 1, firstRequest: now });
+    return true;
+  }
+  if (entry.count >= 5) {
+    return false;
+  }
+  entry.count++;
+  return true;
+}
 
 function deriveInitials(fullName: string): string {
   const parts = fullName.trim().split(/\s+/);
@@ -322,22 +341,66 @@ router.post('/forgot-password', async (req: AuthenticatedRequest, res: Response)
       return res.status(400).json({ detail: 'Email or username is required.' });
     }
 
-    const userRes = await query(
-      'SELECT id FROM users WHERE LOWER(email) = $1 OR LOWER(username) = $1',
-      [target]
-    );
-    if (userRes.rows.length > 0) {
-      const token = generateTokenHash();
-      const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
-      await query(
-        'INSERT INTO password_resets (user_id, token_hash, expires_at) VALUES ($1, $2, $3)',
-        [userRes.rows[0].id, token, expiresAt.toISOString()]
-      );
+    // Rate limiting: 5 requests per 15 minutes per IP and identifier
+    const clientIp = (req.headers['x-forwarded-for'] as string || req.ip || 'unknown').split(',')[0].trim();
+    const rateLimitKey = `${clientIp}_${target}`;
+    if (!checkResetRateLimit(rateLimitKey)) {
+      return res.status(429).json({ detail: 'Too many password reset requests. Please wait 15 minutes before trying again.' });
     }
 
-    return res.json({ message: 'If an account exists with this email, a password reset link has been sent.' });
+    const genericMsg = 'If an account exists with this email or username, password reset instructions have been initiated.';
+
+    const userRes = await query(
+      'SELECT id, email, full_name, username FROM users WHERE LOWER(email) = $1 OR LOWER(username) = $1',
+      [target]
+    );
+
+    let devToken: string | undefined = undefined;
+
+    if (userRes.rows.length > 0) {
+      const user = userRes.rows[0];
+
+      // Invalidate any existing unused reset tokens for this user
+      await query(
+        'UPDATE password_resets SET used_at = CURRENT_TIMESTAMP WHERE user_id = $1 AND used_at IS NULL',
+        [user.id]
+      );
+
+      // Generate cryptographically random 32-byte token and hash it for DB storage
+      const rawToken = generateResetToken();
+      const tokenHash = hashToken(rawToken);
+
+      // Single-use token with short 15-minute expiration
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+      await query(
+        'INSERT INTO password_resets (user_id, token_hash, expires_at) VALUES ($1, $2, $3)',
+        [user.id, tokenHash, expiresAt.toISOString()]
+      );
+
+      // Attempt email delivery if provider is configured
+      const deliveryResult = await sendPasswordResetEmail(user.email, user.full_name, rawToken);
+
+      if (deliveryResult.delivered) {
+        console.log(`[Auth] Password reset email delivered via ${deliveryResult.provider} for user ID ${user.id}`);
+      } else {
+        console.warn(`[Auth] Warning: Password reset token created for user ID ${user.id}, but email delivery was not initiated: ${deliveryResult.reason || deliveryResult.error}`);
+      }
+
+      // In development / local testing mode, expose dev_reset_token for automated testing
+      if (process.env.NODE_ENV !== 'production' || process.env.DEBUG === 'true') {
+        devToken = rawToken;
+      }
+    }
+
+    return res.json({
+      message: genericMsg,
+      email_delivery_configured: isEmailDeliveryConfigured(),
+      ...(devToken ? { dev_reset_token: devToken } : {}),
+    });
   } catch (err: any) {
-    return res.status(500).json({ detail: err?.message || 'Error processing request.' });
+    console.error('[Auth] Forgot password error:', err?.message || err);
+    return res.status(500).json({ detail: 'An error occurred processing the password reset request.' });
   }
 });
 
@@ -351,14 +414,17 @@ router.post('/reset-password', async (req: AuthenticatedRequest, res: Response) 
       return res.status(400).json({ detail: 'Token and new password are required.' });
     }
 
-    if (new_password.length < 8) {
+    if (typeof new_password !== 'string' || new_password.length < 8) {
       return res.status(400).json({ detail: 'Password must be at least 8 characters long.' });
     }
+
+    // Verify token using SHA-256 hash
+    const tokenHash = hashToken(token);
 
     const resetRes = await query(
       `SELECT id, user_id FROM password_resets 
        WHERE token_hash = $1 AND used_at IS NULL AND expires_at > CURRENT_TIMESTAMP`,
-      [token]
+      [tokenHash]
     );
 
     if (resetRes.rows.length === 0) {
@@ -366,14 +432,25 @@ router.post('/reset-password', async (req: AuthenticatedRequest, res: Response) 
     }
 
     const reset = resetRes.rows[0];
-    const newHash = hashPassword(new_password);
 
-    await query('UPDATE users SET password_hash = $1 WHERE id = $2', [newHash, reset.user_id]);
+    // 1. Mark reset token as used immediately (single-use enforcement)
     await query('UPDATE password_resets SET used_at = CURRENT_TIMESTAMP WHERE id = $1', [reset.id]);
 
-    return res.json({ message: 'Password has been reset successfully.' });
+    // 2. Hash new password with PBKDF2-HMAC-SHA256 (100,000 iterations)
+    const newHash = hashPassword(new_password);
+
+    // 3. Update user password in PostgreSQL
+    await query('UPDATE users SET password_hash = $1 WHERE id = $2', [newHash, reset.user_id]);
+
+    // 4. Revoke all active sessions for this user across all devices
+    await query('UPDATE app_sessions SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = $1', [reset.user_id]);
+
+    return res.json({
+      message: 'Password has been reset successfully. All existing sessions have been revoked for security.',
+    });
   } catch (err: any) {
-    return res.status(500).json({ detail: err?.message || 'Error resetting password.' });
+    console.error('[Auth] Reset password error:', err?.message || err);
+    return res.status(500).json({ detail: 'An error occurred resetting your password.' });
   }
 });
 
