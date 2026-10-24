@@ -511,8 +511,16 @@ async function runTests() {
   });
   assert(rAdminAllowed.status === 200 && rAdminAllowed.data.total_users === 2, 'Admin user successfully accesses GET /api/admin/overview');
 
-  // 9. Logout & Session Invalidation
-  console.log('\n[9] Logout & Revocation:');
+  // Daily Reflection Contract Verification (Regression test for Dashboard crash)
+  console.log('\n[9] Daily Reflection & Dashboard Stability:');
+  const rRefl = await request('/api/reflection/daily', { headers: { 'Cookie': cookieHeader } });
+  assert(rRefl.status === 200, 'GET /api/reflection/daily returns 200');
+  assert(typeof rRefl.data.reflection === 'string' && rRefl.data.reflection.length > 0, 'GET /api/reflection/daily returns non-empty reflection string');
+  assert(typeof rRefl.data.highlight_metric === 'string', 'GET /api/reflection/daily returns highlight_metric');
+  assert(typeof rRefl.data.highlight_color === 'string', 'GET /api/reflection/daily returns highlight_color');
+
+  // 10. Logout & Session Invalidation
+  console.log('\n[10] Logout & Revocation:');
   const rLogout = await request('/api/auth/logout', {
     method: 'POST',
     headers: { 'Cookie': cookieHeader }

@@ -105,7 +105,16 @@ const Dashboard = () => {
 
       if (progRes) setProgression(progRes);
       if (Array.isArray(goalsRes)) setGoals(goalsRes);
-      if (reflectionRes) setReflectionData(reflectionRes);
+      if (reflectionRes) {
+        setReflectionData((prev) => ({
+          ...prev,
+          ...reflectionRes,
+          reflection: reflectionRes.reflection || reflectionRes.quote || prev?.reflection || 'Small choices today create extraordinary tomorrows.',
+          highlight_metric: reflectionRes.highlight_metric || prev?.highlight_metric || 'Daily Protocol',
+          highlight_color: reflectionRes.highlight_color || prev?.highlight_color || '#38BDF8',
+          date: reflectionRes.date ? String(reflectionRes.date) : prev?.date,
+        }));
+      }
 
       setBackendConnected(true);
     } catch (err) {
@@ -376,7 +385,7 @@ const Dashboard = () => {
             <span className="reflection-date font-display">{reflectionData.date}</span>
           </div>
           <h3 className="reflection-title font-serif">
-            "{reflectionData.reflection.replace(/^"|"$/g, '')}"
+            "{String(reflectionData?.reflection || 'Small choices today create extraordinary tomorrows.').replace(/^"|"$/g, '')}"
           </h3>
           <Link to="/journal" className="reflection-cta-btn" style={{ textDecoration: 'none' }}>
             <span>Write Reflection</span>

@@ -44,8 +44,9 @@ const TopBar = ({ user }) => {
 
   const handleIncomingNotification = useCallback((notif) => {
     setNotifications((prev) => {
-      if (prev.some((n) => n.id === notif.id)) return prev;
-      return [notif, ...prev];
+      const current = Array.isArray(prev) ? prev : [];
+      if (!notif || current.some((n) => n?.id === notif.id)) return current;
+      return [notif, ...current];
     });
     setUnreadCount((prev) => prev + 1);
   }, []);
@@ -142,7 +143,10 @@ const TopBar = ({ user }) => {
         ]);
         if (isMounted) {
           if (u) setUserProfile(u);
-          if (notifList) setNotifications(notifList);
+          if (notifList) {
+            const notifs = Array.isArray(notifList) ? notifList : (notifList?.notifications || []);
+            setNotifications(notifs);
+          }
           if (unreadData) setUnreadCount(unreadData.unread_count || 0);
         }
       } catch (err) {
@@ -474,12 +478,12 @@ const TopBar = ({ user }) => {
               </div>
 
               <div style={{ overflowY: 'auto', flex: 1, padding: '8px 0' }}>
-                {notifications.length === 0 ? (
+                {(!Array.isArray(notifications) || notifications.length === 0) ? (
                   <div style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '12px' }}>
                     No system notifications.
                   </div>
                 ) : (
-                  notifications.map((n) => (
+                  (Array.isArray(notifications) ? notifications : []).map((n) => (
                     <div
                       key={n.id}
                       onClick={() => handleNotificationClick(n)}

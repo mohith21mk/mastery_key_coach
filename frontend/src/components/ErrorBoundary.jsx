@@ -33,6 +33,14 @@ export default class ErrorBoundary extends React.Component {
 
   render() {
     if (this.state.hasError) {
+      if (this.props.sectionName) {
+        return (
+          <div className="section-error-fallback" style={{ padding: '24px', background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '12px', margin: '12px 0', textAlign: 'center', color: 'var(--text-secondary, #94A3B8)' }}>
+            <p style={{ margin: '0 0 12px 0', fontSize: '14px' }}>Unable to load {this.props.sectionName}. Platform remains securely active.</p>
+            <button onClick={this.handleRetry} style={{ padding: '6px 14px', background: 'rgba(56, 189, 248, 0.1)', border: '1px solid var(--cyan, #38BDF8)', borderRadius: '6px', color: 'var(--cyan, #38BDF8)', cursor: 'pointer', fontSize: '12px' }}>Retry</button>
+          </div>
+        );
+      }
       return (
         <div className="mkc-error-boundary-container">
           <div className="mkc-error-boundary-card glass-panel">

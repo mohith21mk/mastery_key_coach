@@ -5,8 +5,9 @@ const MasteryPlanCard = ({ activeGoal, linkedMissions = [], telemetryBlueprint =
   const goalTitle = telemetryBlueprint?.current_phase || activeGoal?.title || 'Phase 2: AI & Machine Learning';
   const goalCategory = telemetryBlueprint?.title ? 'ACTIVE BLUEPRINT' : activeGoal?.category ? activeGoal.category.toUpperCase() : 'ACTIVE BLUEPRINT';
   
-  const completedMestones = telemetryBlueprint?.completed_milestones ?? linkedMissions.filter(m => m.completed).length;
-  const totalMestones = telemetryBlueprint?.total_milestones ?? linkedMissions.length;
+  const safeMissions = Array.isArray(linkedMissions) ? linkedMissions : [];
+  const completedMestones = telemetryBlueprint?.completed_milestones ?? safeMissions.filter(m => m && m.completed).length;
+  const totalMestones = telemetryBlueprint?.total_milestones ?? safeMissions.length;
 
   const progressPercent = telemetryBlueprint?.progress_percentage ?? (totalMestones > 0
     ? Math.round((completedMestones / totalMestones) * 100)
