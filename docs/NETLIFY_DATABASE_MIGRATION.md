@@ -427,7 +427,7 @@ CREATE INDEX IF NOT EXISTS idx_feedback_created ON feedback(created_at DESC);
 -- ============================================================================
 -- END OF CORE PRODUCTION SCHEMA (28 TABLES, 44 INDEXES & CONSTRAINTS)
 -- ============================================================================
-`
+```
 
 ## Next Steps: Administrator Account Setup
 
