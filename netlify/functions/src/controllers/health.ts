@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { query } from '../db';
+import { query, getDatabaseDiagnostics } from '../db';
 
 const router = Router();
 
@@ -19,15 +19,18 @@ router.get(['/ready', '/api/health/ready', '/health/ready'], async (_req: Reques
       return res.json({
         status: 'ready',
         database: 'connected',
+        diagnostics: getDatabaseDiagnostics(),
         timestamp: new Date().toISOString(),
       });
     }
-    res.status(503).json({ status: 'unhealthy', database: 'no_rows' });
+    res.status(503).json({ status: 'unhealthy', database: 'no_rows', diagnostics: getDatabaseDiagnostics() });
   } catch (err: any) {
     res.status(503).json({
       status: 'unhealthy',
       database: 'error',
       error: err?.message || 'Database ping failed',
+      code: err?.code,
+      diagnostics: getDatabaseDiagnostics(),
     });
   }
 });
