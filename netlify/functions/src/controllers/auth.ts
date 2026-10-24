@@ -133,8 +133,14 @@ router.post('/register', async (req: AuthenticatedRequest, res: Response) => {
       },
     });
   } catch (err: any) {
-    console.error('[Auth] Register error:', err);
-    return res.status(500).json({ detail: err?.message || 'Registration failed' });
+    console.error('[Auth] Register error:', err?.message || err);
+    const isDbConfig = err?.message && err.message.includes('DATABASE_URL is not configured');
+    if (isDbConfig) {
+      return res.status(503).json({
+        detail: 'Registration service is temporarily unavailable. Please try again shortly or contact the administrator.',
+      });
+    }
+    return res.status(500).json({ detail: 'An error occurred during registration. Please try again.' });
   }
 });
 
@@ -202,8 +208,14 @@ router.post('/login', async (req: AuthenticatedRequest, res: Response) => {
       },
     });
   } catch (err: any) {
-    console.error('[Auth] Login error:', err);
-    return res.status(500).json({ detail: err?.message || 'Login failed' });
+    console.error('[Auth] Login error:', err?.message || err);
+    const isDbConfig = err?.message && err.message.includes('DATABASE_URL is not configured');
+    if (isDbConfig) {
+      return res.status(503).json({
+        detail: 'Authentication service is temporarily unavailable. Please try again shortly or contact the administrator.',
+      });
+    }
+    return res.status(500).json({ detail: 'An error occurred during authentication. Please try again.' });
   }
 });
 

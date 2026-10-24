@@ -22,18 +22,33 @@ export function getPool(): Pool {
     console.warn('[DB] Warning: No valid DATABASE_URL configured. Database queries may fail unless mocked.');
   }
 
-  // Supabase connections require SSL
+  // Remote PostgreSQL services (Supabase, AWS RDS, etc.) require SSL
   const isRemote = isPostgres && (
-    connectionString.includes('supabase.co') || 
+    connectionString.includes('supabase') || 
     connectionString.includes('pooler.supabase.com') ||
     connectionString.includes('render.com') ||
     connectionString.includes('aws') ||
-    connectionString.includes('sslmode=require')
+    connectionString.includes('sslmode=require') ||
+    connectionString.includes('sslmode=verify-full')
   );
+
+  let sslConfig: any = false;
+  if (isRemote) {
+    if (process.env.DB_SSL_CA) {
+      sslConfig = {
+        rejectUnauthorized: true,
+        ca: process.env.DB_SSL_CA,
+      };
+    } else {
+      // Supabase poolers (Supavisor / PgBouncer) utilize internal/custom CA chains.
+      // If DB_SSL_CA is not provided, allow TLS encryption without rejecting custom pooler roots.
+      sslConfig = { rejectUnauthorized: false };
+    }
+  }
 
   pool = new Pool({
     connectionString,
-    ssl: isRemote ? { rejectUnauthorized: false } : false,
+    ssl: sslConfig,
     max: 5,
     idleTimeoutMillis: 10000,
     connectionTimeoutMillis: 8000,

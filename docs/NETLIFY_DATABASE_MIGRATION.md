@@ -425,98 +425,21 @@ CREATE INDEX IF NOT EXISTS idx_feedback_category ON feedback(category);
 CREATE INDEX IF NOT EXISTS idx_feedback_created ON feedback(created_at DESC);
 
 -- ============================================================================
--- INITIAL SEED DATA FOR DEMO ACCOUNT & STARTER ENTITIES
+-- END OF CORE PRODUCTION SCHEMA (28 TABLES, 44 INDEXES & CONSTRAINTS)
 -- ============================================================================
+`
 
--- Password: "Password123!" hashed with PBKDF2-SHA256 (100,000 iterations, salt: 9e6eb7b9b005eef3, key: 32 bytes)
-INSERT INTO users (
-    email,
-    username,
-    password_hash,
-    full_name,
-    mkc_id,
-    avatar_initials,
-    bio,
-    role,
-    email_verified,
-    onboarding_completed
-)
-VALUES (
-    'demo@masterykeycoach.com',
-    'mohith_ai',
-    'pbkdf2_sha256$100000$7bd8e23af69c904aa5df7661fed76545$202db117259a1e81aa82c1a84bac9919073d3b3d3efaf50f34a5ec98c4dd6c7d',
-    'Mastery Key Coach Demo',
-    'MKC-2026-DEMO01',
-    'MK',
-    'AI Engineering & Full-Stack Systems Mastery Demo Account',
-    'admin',
-    1,
-    1
-)
-ON CONFLICT (email) DO UPDATE 
-SET password_hash = EXCLUDED.password_hash, role = 'admin';
+## Next Steps: Administrator Account Setup
 
--- Seed User Settings for Demo User
-INSERT INTO user_settings (user_id, theme, notifications_enabled, coach_style, daily_reminder_time, profile_visibility)
-SELECT id, 'dark', 1, 'strategic', '08:00', 'public'
-FROM users
-WHERE email = 'demo@masterykeycoach.com'
-ON CONFLICT (user_id) DO NOTHING;
-
--- Seed Default Goal
-INSERT INTO goals (user_id, title, description, category, status, target_date)
-SELECT id, 'AI Engineering Mastery', 'Become an industry-ready AI Engineer by building strong foundations in Python, DSA, machine learning, backend engineering, cloud, and AI application development.', 'career', 'active', '2028-06-30'
-FROM users
-WHERE email = 'demo@masterykeycoach.com'
-AND NOT EXISTS (
-    SELECT 1 FROM goals g JOIN users u ON g.user_id = u.id WHERE u.email = 'demo@masterykeycoach.com'
-);
-
--- Seed Default Daily Missions
-INSERT INTO missions (title, description, category, time, difficulty, xp_reward, completed, user_id)
-SELECT 'Morning Mindset Protocol', 'Strategic planning and mental clarity routine', 'mindset', '15 min', 'easy', 15, 0, u.id
-FROM users u WHERE u.email = 'demo@masterykeycoach.com'
-AND NOT EXISTS (SELECT 1 FROM missions m WHERE m.user_id = u.id AND m.title = 'Morning Mindset Protocol');
-
-INSERT INTO missions (title, description, category, time, difficulty, xp_reward, completed, user_id)
-SELECT 'Deep Work Architecture Block', 'High-focus deep work session on core engineering', 'productivity', '45 min', 'medium', 25, 0, u.id
-FROM users u WHERE u.email = 'demo@masterykeycoach.com'
-AND NOT EXISTS (SELECT 1 FROM missions m WHERE m.user_id = u.id AND m.title = 'Deep Work Architecture Block');
-
-INSERT INTO missions (title, description, category, time, difficulty, xp_reward, completed, user_id)
-SELECT 'Physical Conditioning & Workout', 'High-intensity physical workout session', 'wellness', '30 min', 'medium', 20, 0, u.id
-FROM users u WHERE u.email = 'demo@masterykeycoach.com'
-AND NOT EXISTS (SELECT 1 FROM missions m WHERE m.user_id = u.id AND m.title = 'Physical Conditioning & Workout');
-
--- Seed Default Habits
-INSERT INTO habits (title, category, frequency, target_days_per_week, status, user_id)
-SELECT 'Cold Plunge / Cold Shower', 'wellness', 'daily', 7, 'active', u.id
-FROM users u WHERE u.email = 'demo@masterykeycoach.com'
-AND NOT EXISTS (SELECT 1 FROM habits h WHERE h.user_id = u.id AND h.title = 'Cold Plunge / Cold Shower');
-
-INSERT INTO habits (title, category, frequency, target_days_per_week, status, user_id)
-SELECT 'Daily Code Commit & Review', 'productivity', 'daily', 7, 'active', u.id
-FROM users u WHERE u.email = 'demo@masterykeycoach.com'
-AND NOT EXISTS (SELECT 1 FROM habits h WHERE h.user_id = u.id AND h.title = 'Daily Code Commit & Review');
-
-INSERT INTO habits (title, category, frequency, target_days_per_week, status, user_id)
-SELECT 'Read 20 Pages Non-Fiction', 'learning', 'daily', 7, 'active', u.id
-FROM users u WHERE u.email = 'demo@masterykeycoach.com'
-AND NOT EXISTS (SELECT 1 FROM habits h WHERE h.user_id = u.id AND h.title = 'Read 20 Pages Non-Fiction');
-
--- Seed Default Community Starter Posts
-INSERT INTO community_posts (user_id, author_name, content, category, likes_count)
-SELECT u.id, 'Mastery Key Coach Demo', 'Welcome to the Mastery Key Network! Execute your daily protocols, track momentum, and compound 1% improvements daily.', 'general', 0
-FROM users u WHERE u.email = 'demo@masterykeycoach.com'
-AND NOT EXISTS (SELECT 1 FROM community_posts WHERE author_name = 'Mastery Key Coach Demo' AND content LIKE 'Welcome%');
-
-INSERT INTO community_posts (user_id, author_name, content, category, likes_count)
-SELECT u.id, 'Mastery Key Coach Demo', 'Milestone breakthrough: Completed 14-day consecutive deep work protocol and deployed system architecture.', 'wins', 0
-FROM users u WHERE u.email = 'demo@masterykeycoach.com'
-AND NOT EXISTS (SELECT 1 FROM community_posts WHERE author_name = 'Mastery Key Coach Demo' AND content LIKE 'Milestone%');
-
-INSERT INTO community_posts (user_id, author_name, content, category, likes_count)
-SELECT u.id, 'Mastery Key Coach Demo', 'Discipline principle: Motivation is an emotional impulse; discipline is an automated engineering system.', 'mindset', 0
-FROM users u WHERE u.email = 'demo@masterykeycoach.com'
-AND NOT EXISTS (SELECT 1 FROM community_posts WHERE author_name = 'Mastery Key Coach Demo' AND content LIKE 'Discipline%');
-```
+1. Run the complete SQL migration above in the **Supabase SQL Editor**.
+2. Open your live application at /register and register your personal account.
+3. In Supabase SQL Editor, promote your account to administrator:
+   `sql
+   UPDATE users
+   SET role = 'admin', email_verified = 1
+   WHERE email = 'your-email@example.com';
+   `
+4. Verify your account role safely:
+   `sql
+   SELECT id, email, username, full_name, role, is_active FROM users WHERE email = 'your-email@example.com';
+   `
