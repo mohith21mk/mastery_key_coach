@@ -548,6 +548,22 @@ async function runTests() {
   });
   assert(rAdminAllowed.status === 200 && rAdminAllowed.data.total_users === 2, 'Admin user successfully accesses GET /api/admin/overview');
 
+  // Database Migration Route Protection (Regression tests)
+  const rMigrateUnauth = await request('/api/health/migrate', { method: 'POST' });
+  assert(rMigrateUnauth.status === 401, 'Unauthenticated request to POST /api/health/migrate rejected with 401');
+
+  const rMigrateForbidden = await request('/api/health/migrate', {
+    method: 'POST',
+    headers: { 'Cookie': userCookie }
+  });
+  assert(rMigrateForbidden.status === 403, 'Regular non-admin user request to POST /api/health/migrate rejected with 403');
+
+  const rMigrateAdmin = await request('/api/health/migrate', {
+    method: 'POST',
+    headers: { 'Cookie': cookieHeader }
+  });
+  assert(rMigrateAdmin.status === 200, 'Admin user successfully initiates POST /api/health/migrate');
+
   // Daily Reflection Contract Verification (Regression test for Dashboard crash)
   console.log('\n[9] Daily Reflection & Dashboard Stability:');
   const rRefl = await request('/api/reflection/daily', { headers: { 'Cookie': cookieHeader } });

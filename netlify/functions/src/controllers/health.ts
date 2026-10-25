@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { query, getDatabaseDiagnostics } from '../db';
 import { getExistingTables, runSchemaMigration } from '../schemaMigration';
 import { getEmailDiagnostics } from '../utils/email';
+import { AuthenticatedRequest } from '../middleware/auth';
 
 const router = Router();
 
@@ -62,7 +63,19 @@ router.get(['/email', '/api/health/email', '/health/email'], (_req: Request, res
   });
 });
 
-router.post(['/migrate', '/api/health/migrate', '/health/migrate'], async (_req: Request, res: Response) => {
+router.post(['/migrate', '/api/health/migrate', '/health/migrate'], async (req: AuthenticatedRequest, res: Response) => {
+  const migrationKey = (req.headers['x-migration-key'] as string) || (req.headers['x-admin-key'] as string);
+  const configuredKey = process.env.ADMIN_MIGRATION_KEY;
+  const isKeyAuthorized = Boolean(configuredKey && migrationKey && migrationKey === configuredKey);
+  const isAdminSession = Boolean(req.user && req.user.role === 'admin');
+
+  if (!isKeyAuthorized && !isAdminSession) {
+    if (!req.user && !migrationKey) {
+      return res.status(401).json({ error: 'Unauthorized: Authentication required to execute database migrations.' });
+    }
+    return res.status(403).json({ error: 'Forbidden: Administrator privileges required to execute database migrations.' });
+  }
+
   try {
     const result = await runSchemaMigration();
     return res.json(result);
