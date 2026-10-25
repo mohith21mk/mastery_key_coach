@@ -14,7 +14,8 @@ router.get(['/', '/health', '/api/health'], (_req: Request, res: Response) => {
   res.json({
     status: 'ok',
     service: 'Mastery Key Coach API (Netlify Functions)',
-    version: '2.1.0',
+    version: '2.1.1',
+    build_id: 'deploy-resend-reload',
     timestamp: new Date().toISOString(),
   });
 });
