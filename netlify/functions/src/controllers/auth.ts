@@ -387,8 +387,10 @@ router.post('/forgot-password', async (req: AuthenticatedRequest, res: Response)
         console.warn(`[Auth] Warning: Password reset token created for user ID ${user.id}, but email delivery was not initiated: ${deliveryResult.reason || deliveryResult.error}`);
       }
 
-      // In development / local testing mode, expose dev_reset_token for automated testing
-      if (process.env.NODE_ENV !== 'production' || process.env.DEBUG === 'true') {
+      // STRICT SECURITY: Never expose dev_reset_token in production, on Netlify, or when DEBUG is set.
+      // Expose ONLY in the local automated test harness (NODE_ENV === 'test' and explicitly NOT on Netlify or production).
+      const isLocalTestHarness = process.env.NODE_ENV === 'test' && !process.env.NETLIFY && process.env.ENVIRONMENT !== 'production';
+      if (isLocalTestHarness) {
         devToken = rawToken;
       }
     }

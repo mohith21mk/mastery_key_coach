@@ -3,6 +3,9 @@
  * Mastery Key Coach (MKC)
  */
 
+process.env.NODE_ENV = 'test';
+delete process.env.NETLIFY;
+
 const { app } = require('../dist-functions/api');
 const { setMockQueryHandler } = require('../dist-functions/src/db');
 const { hashPassword, verifyPassword, validateUsername } = require('../dist-functions/src/utils/security');
