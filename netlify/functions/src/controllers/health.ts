@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { query, getDatabaseDiagnostics } from '../db';
 import { getExistingTables, runSchemaMigration } from '../schemaMigration';
+import { getEmailDiagnostics } from '../utils/email';
 
 const router = Router();
 
@@ -49,6 +50,16 @@ router.get(['/schema', '/api/health/schema', '/health/schema'], async (_req: Req
   } catch (err: any) {
     return res.status(500).json({ error: err?.message || 'Failed to list tables' });
   }
+});
+
+router.get(['/email', '/api/health/email', '/health/email'], (_req: Request, res: Response) => {
+  return res.json({
+    service: 'Mastery Key Coach Email Dispatcher',
+    diagnostics: getEmailDiagnostics(),
+    supported_providers: ['resend', 'sendgrid', 'brevo'],
+    instructions: 'Set RESEND_API_KEY, SENDGRID_API_KEY, or BREVO_API_KEY in Netlify Environment Variables.',
+    timestamp: new Date().toISOString(),
+  });
 });
 
 router.post(['/migrate', '/api/health/migrate', '/health/migrate'], async (_req: Request, res: Response) => {

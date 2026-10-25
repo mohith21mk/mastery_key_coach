@@ -2,7 +2,7 @@ import https from 'https';
 
 export interface EmailDeliveryResult {
   delivered: boolean;
-  provider: 'resend' | 'sendgrid' | 'smtp' | 'none';
+  provider: 'resend' | 'sendgrid' | 'brevo' | 'smtp' | 'none';
   reason?: string;
   error?: string;
 }
@@ -11,8 +11,37 @@ export function isEmailDeliveryConfigured(): boolean {
   return Boolean(
     process.env.RESEND_API_KEY ||
     process.env.SENDGRID_API_KEY ||
+    process.env.BREVO_API_KEY ||
     process.env.SMTP_HOST
   );
+}
+
+export function getEmailDiagnostics(): {
+  configured: boolean;
+  provider: 'resend' | 'sendgrid' | 'brevo' | 'none';
+  fromEmail: string;
+  fromName: string;
+} {
+  let provider: 'resend' | 'sendgrid' | 'brevo' | 'none' = 'none';
+  if (process.env.RESEND_API_KEY) provider = 'resend';
+  else if (process.env.SENDGRID_API_KEY) provider = 'sendgrid';
+  else if (process.env.BREVO_API_KEY) provider = 'brevo';
+
+  const fromEmail =
+    process.env.RESEND_FROM_EMAIL ||
+    process.env.SENDGRID_FROM_EMAIL ||
+    process.env.BREVO_FROM_EMAIL ||
+    process.env.SMTP_FROM_EMAIL ||
+    (provider === 'resend' ? 'onboarding@resend.dev' : 'security@masterykeycoach.com');
+
+  const fromName = process.env.SMTP_FROM_NAME || 'Mastery Key Coach';
+
+  return {
+    configured: provider !== 'none',
+    provider,
+    fromEmail,
+    fromName,
+  };
 }
 
 function sendHttpsRequest(urlStr: string, options: https.RequestOptions, payload: string): Promise<{ statusCode?: number; body: string }> {
@@ -101,7 +130,6 @@ export async function sendPasswordResetEmail(
 ): Promise<EmailDeliveryResult> {
   const baseUrl = process.env.URL || process.env.FRONTEND_URL || 'https://mastery-key-coach.netlify.app';
   const resetUrl = `${baseUrl.replace(/\/+$/, '')}/reset-password?token=${encodeURIComponent(rawToken)}`;
-  const fromEmail = process.env.SMTP_FROM_EMAIL || process.env.RESEND_FROM_EMAIL || 'security@masterykeycoach.com';
   const fromName = process.env.SMTP_FROM_NAME || 'Mastery Key Coach';
   const subject = 'Mastery Key Coach — Password Reset Instructions';
   const html = renderPasswordResetHtml(recipientName, resetUrl);
@@ -110,6 +138,7 @@ export async function sendPasswordResetEmail(
   // 1. Resend API
   if (process.env.RESEND_API_KEY) {
     try {
+      const fromEmail = process.env.RESEND_FROM_EMAIL || process.env.SMTP_FROM_EMAIL || 'onboarding@resend.dev';
       const payload = JSON.stringify({
         from: `${fromName} <${fromEmail}>`,
         to: [toEmail],
@@ -133,7 +162,7 @@ export async function sendPasswordResetEmail(
       if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
         return { delivered: true, provider: 'resend' };
       }
-      return { delivered: false, provider: 'resend', error: `Resend API returned status ${res.statusCode}` };
+      return { delivered: false, provider: 'resend', error: `Resend API returned status ${res.statusCode}: ${res.body}` };
     } catch (err: any) {
       return { delivered: false, provider: 'resend', error: err?.message || 'Network error' };
     }
@@ -142,6 +171,7 @@ export async function sendPasswordResetEmail(
   // 2. SendGrid API
   if (process.env.SENDGRID_API_KEY) {
     try {
+      const fromEmail = process.env.SENDGRID_FROM_EMAIL || process.env.SMTP_FROM_EMAIL || 'security@masterykeycoach.com';
       const payload = JSON.stringify({
         personalizations: [{ to: [{ email: toEmail }] }],
         from: { email: fromEmail, name: fromName },
@@ -167,16 +197,49 @@ export async function sendPasswordResetEmail(
       if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
         return { delivered: true, provider: 'sendgrid' };
       }
-      return { delivered: false, provider: 'sendgrid', error: `SendGrid API returned status ${res.statusCode}` };
+      return { delivered: false, provider: 'sendgrid', error: `SendGrid API returned status ${res.statusCode}: ${res.body}` };
     } catch (err: any) {
       return { delivered: false, provider: 'sendgrid', error: err?.message || 'Network error' };
     }
   }
 
-  // 3. Fallback: No authorized provider configured in environment
+  // 3. Brevo (Sendinblue) API
+  if (process.env.BREVO_API_KEY) {
+    try {
+      const fromEmail = process.env.BREVO_FROM_EMAIL || process.env.SMTP_FROM_EMAIL || 'security@masterykeycoach.com';
+      const payload = JSON.stringify({
+        sender: { name: fromName, email: fromEmail },
+        to: [{ email: toEmail, name: recipientName }],
+        subject,
+        htmlContent: html,
+        textContent: text,
+      });
+
+      const res = await sendHttpsRequest(
+        'https://api.brevo.com/v3/smtp/email',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'api-key': process.env.BREVO_API_KEY.trim(),
+          },
+        },
+        payload
+      );
+
+      if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+        return { delivered: true, provider: 'brevo' };
+      }
+      return { delivered: false, provider: 'brevo', error: `Brevo API returned status ${res.statusCode}: ${res.body}` };
+    } catch (err: any) {
+      return { delivered: false, provider: 'brevo', error: err?.message || 'Network error' };
+    }
+  }
+
+  // 4. Fallback: No authorized provider configured in environment
   return {
     delivered: false,
     provider: 'none',
-    reason: 'NO_EMAIL_PROVIDER_CONFIGURED (Set RESEND_API_KEY or SENDGRID_API_KEY in Netlify environment variables)',
+    reason: 'NO_EMAIL_PROVIDER_CONFIGURED (Set RESEND_API_KEY, SENDGRID_API_KEY, or BREVO_API_KEY in Netlify environment variables)',
   };
 }
