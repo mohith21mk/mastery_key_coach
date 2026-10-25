@@ -58,11 +58,17 @@ router.get(['/schema', '/api/health/schema', '/health/schema'], async (_req: Req
 });
 
 router.get(['/email', '/api/health/email', '/health/email'], (_req: Request, res: Response) => {
+  const envKeys = Object.keys(process.env).filter(k => 
+    /RESEND|SENDGRID|BREVO|SMTP|EMAIL|MAIL/i.test(k)
+  );
   return res.json({
     service: 'Mastery Key Coach Email Dispatcher',
     diagnostics: getEmailDiagnostics(),
+    detected_email_env_keys: envKeys,
+    has_resend_key: Boolean(process.env.RESEND_API_KEY),
+    resend_key_length: process.env.RESEND_API_KEY ? process.env.RESEND_API_KEY.trim().length : 0,
     supported_providers: ['resend', 'sendgrid', 'brevo'],
-    instructions: 'Set RESEND_API_KEY, SENDGRID_API_KEY, or BREVO_API_KEY in Netlify Environment Variables.',
+    instructions: 'Set RESEND_API_KEY in Netlify Environment Variables with scope including Functions.',
     timestamp: new Date().toISOString(),
   });
 });
