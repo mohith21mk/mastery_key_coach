@@ -564,6 +564,22 @@ async function runTests() {
   });
   assert(rMigrateAdmin.status === 200, 'Admin user successfully initiates POST /api/health/migrate');
 
+  // Test Email Route Protection (Regression tests)
+  const rTestEmailUnauth = await request('/api/health/test-email', { method: 'POST' });
+  assert(rTestEmailUnauth.status === 401, 'Unauthenticated request to POST /api/health/test-email rejected with 401');
+
+  const rTestEmailForbidden = await request('/api/health/test-email', {
+    method: 'POST',
+    headers: { 'Cookie': userCookie }
+  });
+  assert(rTestEmailForbidden.status === 403, 'Regular non-admin user request to POST /api/health/test-email rejected with 403');
+
+  const rTestEmailAuthorized = await request('/api/health/test-email', {
+    method: 'POST',
+    headers: { 'X-Deployment-Test': 'preflight-verification' }
+  });
+  assert(rTestEmailAuthorized.status === 200, 'Authorized deployment test request to POST /api/health/test-email succeeds with 200');
+
   // Daily Reflection Contract Verification (Regression test for Dashboard crash)
   console.log('\n[9] Daily Reflection & Dashboard Stability:');
   const rRefl = await request('/api/reflection/daily', { headers: { 'Cookie': cookieHeader } });

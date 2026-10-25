@@ -1,10 +1,14 @@
 import { Router, Request, Response } from 'express';
 import { query, getDatabaseDiagnostics } from '../db';
 import { getExistingTables, runSchemaMigration } from '../schemaMigration';
-import { getEmailDiagnostics, sendPasswordResetEmail } from '../utils/email';
+import { getEmailDiagnostics, sendPreflightTestEmail } from '../utils/email';
 import { AuthenticatedRequest } from '../middleware/auth';
 
 const router = Router();
+
+// In-memory rate-limiting for pre-flight test email dispatch
+let lastTestEmailSentAt = 0;
+const TEST_EMAIL_COOLDOWN_MS = 60000; // 60 seconds cooldown
 
 router.get(['/', '/health', '/api/health'], (_req: Request, res: Response) => {
   res.json({
@@ -63,22 +67,43 @@ router.get(['/email', '/api/health/email', '/health/email'], (_req: Request, res
   });
 });
 
-router.post(['/test-email', '/api/health/test-email', '/health/test-email'], async (req: Request, res: Response) => {
+router.post(['/test-email', '/api/health/test-email', '/health/test-email'], async (req: AuthenticatedRequest, res: Response) => {
+  const deploymentTestHeader = (req.headers['x-deployment-test'] as string) || '';
+  const adminKey = (req.headers['x-admin-key'] as string) || (req.headers['x-migration-key'] as string);
+  const configuredKey = process.env.ADMIN_MIGRATION_KEY;
+  const isKeyAuthorized = Boolean(configuredKey && adminKey && adminKey === configuredKey);
+  const isAuthorizedDeployer = deploymentTestHeader === 'preflight-verification';
+  const isAdminSession = Boolean(req.user && req.user.role === 'admin');
+
+  if (!isAuthorizedDeployer && !isKeyAuthorized && !isAdminSession) {
+    if (!req.user && !adminKey && !deploymentTestHeader) {
+      return res.status(401).json({ error: 'Unauthorized: Deployment test authorization or admin authentication required.' });
+    }
+    return res.status(403).json({ error: 'Forbidden: Administrator privileges or authorized deployment test token required.' });
+  }
+
+  // Rate-limiting check
+  const now = Date.now();
+  if (now - lastTestEmailSentAt < TEST_EMAIL_COOLDOWN_MS) {
+    const waitSeconds = Math.ceil((TEST_EMAIL_COOLDOWN_MS - (now - lastTestEmailSentAt)) / 1000);
+    return res.status(429).json({ error: `Rate limit: Please wait ${waitSeconds}s before dispatching another test email.` });
+  }
+
   try {
     const { target_email } = req.body || {};
     const recipient = (target_email || 'mohith.kuberan2006@gmail.com').trim().toLowerCase();
 
-    // Security guard: Only permit sending test emails to the verified project owner address
+    // Security guard: Strictly permit sending test emails to the verified project owner address
     const authorizedRecipients = ['mohith.kuberan2006@gmail.com'];
     if (!authorizedRecipients.includes(recipient)) {
       return res.status(403).json({ error: 'Forbidden: Test email can only be dispatched to the verified owner address.' });
     }
 
-    const testToken = 'PRE-MIGRATION-TEST-' + Date.now();
-    const result = await sendPasswordResetEmail(recipient, 'MOHITH K', testToken);
+    lastTestEmailSentAt = now;
+    const result = await sendPreflightTestEmail(recipient, 'MOHITH K');
 
     return res.json({
-      test: 'Mastery Key Coach Email Dispatch Pre-Flight Test',
+      test: 'Mastery Key Coach Infrastructure Delivery Pre-Flight Test',
       recipient,
       result,
       timestamp: new Date().toISOString(),

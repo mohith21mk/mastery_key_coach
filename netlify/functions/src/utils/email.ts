@@ -243,3 +243,180 @@ export async function sendPasswordResetEmail(
     reason: 'NO_EMAIL_PROVIDER_CONFIGURED (Set RESEND_API_KEY, SENDGRID_API_KEY, or BREVO_API_KEY in Netlify environment variables)',
   };
 }
+
+export async function sendPreflightTestEmail(
+  toEmail: string,
+  recipientName: string
+): Promise<EmailDeliveryResult> {
+  const fromName = process.env.SMTP_FROM_NAME || 'Mastery Key Coach';
+  const subject = 'Mastery Key Coach — Infrastructure Delivery Test';
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mastery Key Coach — Infrastructure Delivery Test</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #030A14; font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif; color: #F8FAFC;">
+  <table border="0" cellpadding="0" cellspacing="0" width="100%" style="table-layout: fixed;">
+    <tr>
+      <td align="center" style="padding: 40px 16px;">
+        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 580px; background-color: #0A1428; border: 1px solid #1E293B; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);">
+          <tr>
+            <td style="padding: 36px 36px 20px 36px; text-align: center; border-bottom: 1px solid #1E293B; background: linear-gradient(180deg, #0F1E38 0%, #0A1428 100%);">
+              <div style="display: inline-block; width: 44px; height: 44px; background: rgba(0, 229, 255, 0.1); border: 1px solid rgba(0, 229, 255, 0.3); border-radius: 12px; line-height: 44px; font-size: 20px;">
+                ⚓
+              </div>
+              <h1 style="margin: 16px 0 6px 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px; color: #FFFFFF;">
+                MASTERY KEY COACH
+              </h1>
+              <div style="font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #38BDF8;">
+                Infrastructure Delivery Pre-Flight Verification
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 36px;">
+              <h2 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 700; color: #FFFFFF;">
+                Delivery Channel Operational
+              </h2>
+              <p style="margin: 0 0 20px 0; font-size: 14px; color: #94A3B8; line-height: 1.5;">
+                Hello ${recipientName || 'Administrator'},
+              </p>
+              <p style="font-size: 14px; color: #CBD5E1; line-height: 1.6; margin: 0 0 20px 0;">
+                This is an automated infrastructure verification dispatch confirming that Mastery Key Coach email delivery is functioning securely via your configured provider.
+              </p>
+              <div style="background-color: #0F1E38; border: 1px solid #1E293B; border-radius: 8px; padding: 16px; margin: 24px 0;">
+                <div style="font-size: 12px; color: #38BDF8; font-weight: 700; text-transform: uppercase; margin-bottom: 6px;">Notice</div>
+                <div style="font-size: 13px; color: #94A3B8; line-height: 1.5;">
+                  This is a non-functional verification message. It contains no links, tokens, or credential-reset actions.
+                </div>
+              </div>
+              <p style="font-size: 12px; color: #64748B; margin: 0;">
+                Dispatched at: ${new Date().toUTCString()}
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 20px 36px; background-color: #050B16; border-top: 1px solid #1E293B; text-align: center;">
+              <p style="margin: 0; font-size: 12px; color: #64748B; line-height: 1.5;">
+                Automated infrastructure test notification &bull; Mastery Key Coach
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+  const text = `Hello ${recipientName || 'Administrator'},\n\nThis is an automated infrastructure verification dispatch confirming that Mastery Key Coach email delivery is functioning securely via your configured provider.\n\nThis is a non-functional verification message. It contains no links, tokens, or credential-reset actions.\n\nDispatched at: ${new Date().toUTCString()}`;
+
+  // 1. Resend API
+  if (process.env.RESEND_API_KEY) {
+    try {
+      const fromEmail = process.env.RESEND_FROM_EMAIL || process.env.SMTP_FROM_EMAIL || 'onboarding@resend.dev';
+      const payload = JSON.stringify({
+        from: `${fromName} <${fromEmail}>`,
+        to: [toEmail],
+        subject,
+        html,
+        text,
+      });
+
+      const res = await sendHttpsRequest(
+        'https://api.resend.com/emails',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${process.env.RESEND_API_KEY.trim()}`,
+          },
+        },
+        payload
+      );
+
+      if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+        return { delivered: true, provider: 'resend' };
+      }
+      return { delivered: false, provider: 'resend', error: `Resend API returned status ${res.statusCode}: ${res.body}` };
+    } catch (err: any) {
+      return { delivered: false, provider: 'resend', error: err?.message || 'Network error' };
+    }
+  }
+
+  // 2. SendGrid API
+  if (process.env.SENDGRID_API_KEY) {
+    try {
+      const fromEmail = process.env.SENDGRID_FROM_EMAIL || process.env.SMTP_FROM_EMAIL || 'security@masterykeycoach.com';
+      const payload = JSON.stringify({
+        personalizations: [{ to: [{ email: toEmail }] }],
+        from: { email: fromEmail, name: fromName },
+        subject,
+        content: [
+          { type: 'text/plain', value: text },
+          { type: 'text/html', value: html },
+        ],
+      });
+
+      const res = await sendHttpsRequest(
+        'https://api.sendgrid.com/v3/mail/send',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${process.env.SENDGRID_API_KEY.trim()}`,
+          },
+        },
+        payload
+      );
+
+      if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+        return { delivered: true, provider: 'sendgrid' };
+      }
+      return { delivered: false, provider: 'sendgrid', error: `SendGrid API returned status ${res.statusCode}: ${res.body}` };
+    } catch (err: any) {
+      return { delivered: false, provider: 'sendgrid', error: err?.message || 'Network error' };
+    }
+  }
+
+  // 3. Brevo API
+  if (process.env.BREVO_API_KEY) {
+    try {
+      const fromEmail = process.env.BREVO_FROM_EMAIL || process.env.SMTP_FROM_EMAIL || 'security@masterykeycoach.com';
+      const payload = JSON.stringify({
+        sender: { name: fromName, email: fromEmail },
+        to: [{ email: toEmail, name: recipientName }],
+        subject,
+        htmlContent: html,
+        textContent: text,
+      });
+
+      const res = await sendHttpsRequest(
+        'https://api.brevo.com/v3/smtp/email',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'api-key': process.env.BREVO_API_KEY.trim(),
+          },
+        },
+        payload
+      );
+
+      if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+        return { delivered: true, provider: 'brevo' };
+      }
+      return { delivered: false, provider: 'brevo', error: `Brevo API returned status ${res.statusCode}: ${res.body}` };
+    } catch (err: any) {
+      return { delivered: false, provider: 'brevo', error: err?.message || 'Network error' };
+    }
+  }
+
+  return {
+    delivered: false,
+    provider: 'none',
+    reason: 'NO_EMAIL_PROVIDER_CONFIGURED',
+  };
+}
