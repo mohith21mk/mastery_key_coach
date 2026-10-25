@@ -1,3 +1,4 @@
+// Mastery Key Coach Serverless Entrypoint (v2.1.2)
 import express, { Request, Response, NextFunction } from 'express';
 import serverless from 'serverless-http';
 import cookieParser from 'cookie-parser';
