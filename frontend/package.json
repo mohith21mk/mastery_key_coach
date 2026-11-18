@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
+    "test:auth-contract": "node --test src/services/authResponse.test.js",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -2,7 +2,7 @@ name: Mastery Key Coach CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, 'fix/**' ]
   pull_request:
     branches: [ main, master ]
 
@@ -47,6 +47,11 @@ jobs:
         run: |
           cd frontend
           npm ci
+
+      - name: Run authentication response contract tests
+        run: |
+          cd frontend
+          npm run test:auth-contract
 
       - name: Run ESLint
         run: |

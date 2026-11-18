@@ -54,6 +54,18 @@ function generateMkcId(year: number = new Date().getFullYear()): string {
   return `MKC-${year}-${rnd}`;
 }
 
+function isDatabaseUnavailableError(error: any): boolean {
+  const code = String(error?.code || error?.cause?.code || '');
+  const message = String(error?.message || error || '');
+  const transientDatabaseCodes = new Set([
+    'ENOTFOUND', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EHOSTUNREACH',
+    '57P01', '57P02', '57P03', '53300', '08000', '08001', '08003',
+    '08004', '08006', '08007',
+  ]);
+
+  return transientDatabaseCodes.has(code) || /DATABASE_URL is not configured|tenant\/user .* not found|database is possibly not accessible|could not connect to (?:the )?server|connection terminated unexpectedly|timeout expired/i.test(message);
+}
+
 // ----------------------------------------------------------------------------
 // POST /api/auth/register
 // ----------------------------------------------------------------------------
@@ -153,8 +165,7 @@ router.post('/register', async (req: AuthenticatedRequest, res: Response) => {
     });
   } catch (err: any) {
     console.error('[Auth] Register error:', err?.message || err);
-    const isDbConfig = err?.message && err.message.includes('DATABASE_URL is not configured');
-    if (isDbConfig) {
+    if (isDatabaseUnavailableError(err)) {
       return res.status(503).json({
         detail: 'Registration service is temporarily unavailable. Please try again shortly or contact the administrator.',
       });
@@ -228,8 +239,7 @@ router.post('/login', async (req: AuthenticatedRequest, res: Response) => {
     });
   } catch (err: any) {
     console.error('[Auth] Login error:', err?.message || err);
-    const isDbConfig = err?.message && err.message.includes('DATABASE_URL is not configured');
-    if (isDbConfig) {
+    if (isDatabaseUnavailableError(err)) {
       return res.status(503).json({
         detail: 'Authentication service is temporarily unavailable. Please try again shortly or contact the administrator.',
       });

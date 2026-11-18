@@ -1,7 +1,17 @@
+import { extractAuthUser } from './authResponse';
+
 // In production on Netlify, the backend is co-located as Netlify Functions at /api/*
 const defaultApiUrl = import.meta.env.PROD ? '' : 'http://localhost:8000';
 let rawApiUrl = import.meta.env.VITE_API_URL !== undefined ? import.meta.env.VITE_API_URL : defaultApiUrl;
-if (import.meta.env.PROD && (rawApiUrl.includes('render') || rawApiUrl.includes('your-backend-service') || rawApiUrl.includes('localhost'))) {
+if (
+  import.meta.env.PROD &&
+  (rawApiUrl.includes('render') || rawApiUrl.includes('your-backend-service') || rawApiUrl.includes('localhost'))
+) {
+  rawApiUrl = '';
+}
+// All API endpoint constants already include the /api prefix. Treat a configured
+// same-origin "/api" base as empty to avoid requesting "/api/api/...".
+if (rawApiUrl.replace(/\/+$/, '') === '/api') {
   rawApiUrl = '';
 }
 const API_BASE_URL = rawApiUrl.replace(/\/+$/, '');
@@ -272,12 +282,18 @@ export async function registerUser(data) {
     const errBody = await response.json().catch(() => ({}));
     throw new Error(errBody.detail || 'Registration failed.');
   }
-  return response.json();
+  const payload = await response.json();
+  const user = extractAuthUser(payload);
+  if (!user) {
+    throw new Error('Registration response did not contain a valid user profile. Check your account before trying again.');
+  }
+  clearApiCache();
+  return user;
 }
 
 export async function loginUser(data) {
   const id = data?.identifier || data?.email || data?.username || '';
-  const payload = {
+  const loginPayload = {
     ...data,
     identifier: id,
     email: data?.email || id,
@@ -286,13 +302,19 @@ export async function loginUser(data) {
   };
   const response = await apiFetch('/api/auth/login', {
     method: 'POST',
-    body: JSON.stringify(payload),
+    body: JSON.stringify(loginPayload),
   });
   if (!response.ok) {
     const errBody = await response.json().catch(() => ({}));
     throw new Error(errBody.detail || 'Invalid username/email or password.');
   }
-  return response.json();
+  const responsePayload = await response.json();
+  const user = extractAuthUser(responsePayload);
+  if (!user) {
+    throw new Error('Login response did not contain a valid user profile. Please try again.');
+  }
+  clearApiCache();
+  return user;
 }
 
 export async function logoutUser() {
@@ -307,7 +329,8 @@ export async function getCurrentUser() {
   if (!response.ok) {
     return null;
   }
-  return response.json();
+  const payload = await response.json().catch(() => null);
+  return extractAuthUser(payload);
 }
 
 export async function forgotPassword(identifier) {
