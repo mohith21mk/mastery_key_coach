@@ -293,7 +293,7 @@ export async function registerUser(data) {
 
 export async function loginUser(data) {
   const id = data?.identifier || data?.email || data?.username || '';
-  const payload = {
+  const loginPayload = {
     ...data,
     identifier: id,
     email: data?.email || id,
@@ -302,14 +302,14 @@ export async function loginUser(data) {
   };
   const response = await apiFetch('/api/auth/login', {
     method: 'POST',
-    body: JSON.stringify(payload),
+    body: JSON.stringify(loginPayload),
   });
   if (!response.ok) {
     const errBody = await response.json().catch(() => ({}));
     throw new Error(errBody.detail || 'Invalid username/email or password.');
   }
-  const payload = await response.json();
-  const user = extractAuthUser(payload);
+  const responsePayload = await response.json();
+  const user = extractAuthUser(responsePayload);
   if (!user) {
     throw new Error('Login response did not contain a valid user profile. Please try again.');
   }
