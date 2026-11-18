@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import {
   getCurrentUser,
   loginUser as apiLoginUser,
@@ -85,9 +85,9 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const checkUsernameAvailability = async (username) => {
+  const checkUsernameAvailability = useCallback((username) => {
     return apiCheckUsernameAvailability(username);
-  };
+  }, []);
 
   const value = {
     user,
