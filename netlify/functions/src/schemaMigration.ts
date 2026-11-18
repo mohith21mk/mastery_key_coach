@@ -13,23 +13,55 @@ export async function getExistingTables(): Promise<string[]> {
   }
 }
 
+/**
+ * Keep the public schema private to the trusted server-side PostgreSQL role.
+ * The frontend talks to Netlify Functions, never directly to Supabase tables.
+ * This must run both when the schema is current and after adding missing tables.
+ */
+async function applyPublicSecurityBaseline(): Promise<void> {
+  await query(`
+    DO $
+    DECLARE
+      item record;
+    BEGIN
+      FOR item IN
+        SELECT schemaname, tablename
+        FROM pg_tables
+        WHERE schemaname = 'public'
+      LOOP
+        EXECUTE format('ALTER TABLE %I.%I ENABLE ROW LEVEL SECURITY', item.schemaname, item.tablename);
+      END LOOP;
+    END
+    $;
+  `);
+
+  await query('REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM anon, authenticated');
+  await query('REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM anon, authenticated');
+  await query('ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM anon, authenticated');
+  await query('ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON SEQUENCES FROM anon, authenticated');
+}
+
 export async function runSchemaMigration(): Promise<{ status: string; tables: string[]; message: string }> {
+  // Apply security hardening even when the core schema is already up to date.
+  await applyPublicSecurityBaseline();
+
   const existing = await getExistingTables();
   if (existing.length >= 28 && existing.includes('users') && existing.includes('app_sessions')) {
     return {
       status: 'up_to_date',
       tables: existing,
-      message: 'All core tables already exist in Supabase database.',
+      message: 'All core tables exist and the public-schema security baseline is enforced.',
     };
   }
 
-  // Execute safe non-destructive DDL
+  // Execute safe non-destructive DDL, then secure any newly-created tables.
   await query(SCHEMA_DDL);
+  await applyPublicSecurityBaseline();
 
   const updated = await getExistingTables();
   return {
     status: 'migrated',
     tables: updated,
-    message: `Successfully migrated schema. ${updated.length} tables verified in database.`,
+    message: `Successfully migrated schema. ${updated.length} tables verified and public-schema security enforced.`,
   };
 }
