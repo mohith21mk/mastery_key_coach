@@ -19,21 +19,20 @@ export async function getExistingTables(): Promise<string[]> {
  * This must run both when the schema is current and after adding missing tables.
  */
 async function applyPublicSecurityBaseline(): Promise<void> {
-  await query(`
-    DO $
-    DECLARE
-      item record;
-    BEGIN
-      FOR item IN
-        SELECT schemaname, tablename
-        FROM pg_tables
-        WHERE schemaname = 'public'
-      LOOP
-        EXECUTE format('ALTER TABLE %I.%I ENABLE ROW LEVEL SECURITY', item.schemaname, item.tablename);
-      END LOOP;
-    END
-    $;
-  `);
+  const enableRlsSql = [
+    'DO $mkc$',
+    'DECLARE',
+    '  item record;',
+    'BEGIN',
+    '  FOR item IN',
+    "    SELECT schemaname, tablename FROM pg_tables WHERE schemaname = 'public'",
+    '  LOOP',
+    "    EXECUTE format('ALTER TABLE %I.%I ENABLE ROW LEVEL SECURITY', item.schemaname, item.tablename);",
+    '  END LOOP;',
+    'END',
+    '$mkc$;',
+  ].join('\\n');
+  await query(enableRlsSql);
 
   await query('REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM anon, authenticated');
   await query('REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM anon, authenticated');
