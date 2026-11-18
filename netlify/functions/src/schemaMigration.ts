@@ -34,6 +34,7 @@ async function applyPublicSecurityBaseline(): Promise<void> {
   ].join(String.fromCharCode(10));
   await query(enableRlsSql);
 
+  await query('REVOKE ALL PRIVILEGES ON SCHEMA public FROM PUBLIC, anon, authenticated');
   await query('REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM anon, authenticated');
   await query('REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM anon, authenticated');
   await query('ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM anon, authenticated');
